@@ -75,12 +75,17 @@
   (remove-missing-food stat)
   (catalog-observed-food stat))
 
-(defn join []
-  (let [nest (call "/join/iron-ant-tyson")]
-    (swap! state assoc :nest-id (:id nest))))
+(defn join [name]
+  (let [nest (call (str "/join/" name))]
+    (swap! state assoc :nest nest)))
 
-(defn spawn []
-  (let [ant (call (format "/%s/spawn" (:nest-id @state)))]
+(defn stat-nest []
+  (let [nest (call (format "/%s/stat" (:id (:nest @state))))]
+    (swap! state update-in [:nest] merge nest)))
+
+(defn spawn [hunter?]
+  (let [ant (call (format "/%s/spawn" (:id (:nest @state))))
+        ant (assoc ant :hunter? hunter?)]
     (swap! state assoc-in [:ants (:id ant)] ant)
     (process-surroundings ant)
     (:id ant)))
@@ -112,31 +117,55 @@
   ;(prn "Going to food " food ant)
   (direction-to (:location ant) (:location food)))
 
+(defn look-for-food [ant]
+  (if (has-food-destination? ant)
+    (goto-food-destination ant)
+    (assign-and-goto-food-dest ant)))
+
 (defn ant-tick [ant-id]
   (let [ant (get-in @state [:ants ant-id])]
     (if (:got-food ant)
       (go-home ant)
-      (if-let [food (nearest-food (:location ant))]
-        (goto-food ant food)
-        (if (has-food-destination? ant)
-          (goto-food-destination ant)
-          (assign-and-goto-food-dest ant))))))
+      (if (:hunter? ant)
+        (look-for-food ant)
+        (if-let [food (nearest-food (:location ant))]
+          (goto-food ant food)
+          (look-for-food ant))))))
 
 (defn spawn? []
-  (let [n (count (:ants @state))]
-    (< n 5)))
+  (let [nest (:nest @state)]
+    (and (< 0 (:food nest))
+         (< (:ants nest) 20))))
 
-(defn -main []
-  (println "Iron Ant Tyson")
-  (init "http://localhost:8888")
-  (join)
-  (future (spawn))
-  (future (spawn))
-  (future (spawn))
-  (future (spawn))
-  (future (spawn))
-  (while true
-    (let [workers (mapv #(future
-                          (let [dir (ant-tick %)]
-                            (go % dir))) (keys (:ants @state)))]
-      (doseq [worker workers] (deref worker)))))
+(defn spawn-ant-thread
+  ([] (spawn-ant-thread false))
+  ([hunter?]
+   (.start
+     (Thread.
+       (fn []
+         (let [ant-id (spawn hunter?)]
+           (while true
+             (let [dir (ant-tick ant-id)]
+               (go ant-id dir)))))))))
+
+(defn overwatch-thread []
+  (.start
+    (Thread.
+      (fn []
+        (while true
+          (Thread/sleep 1000)
+          (stat-nest)
+          (when (spawn?)
+            (spawn-ant-thread)))))))
+
+(defn -main [& args]
+  (let [name (or (first args) "iron-ant-tyson")]
+    (println "Iron Ant Tyson")
+    (init "http://localhost:8888")
+    (join name)
+    (spawn-ant-thread true)
+    (spawn-ant-thread true)
+    (spawn-ant-thread)
+    (spawn-ant-thread)
+    (spawn-ant-thread)
+    (overwatch-thread)))

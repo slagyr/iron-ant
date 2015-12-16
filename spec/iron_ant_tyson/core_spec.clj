@@ -11,15 +11,15 @@
 
   (it "joining"
     (with-redefs [http/get (constantly (success "{:response \"ok\", :stat {:type :nest, :location [0 0], :food 5, :team \"iron-ant-tyson\", :id \"45356038\"}}\n"))]
-      (join)
-      (should= "45356038" (:nest-id @state))))
+      (join "iron-ant-tyson")
+      (should= "45356038" (:id (:nest @state)))))
 
   (it "spawning"
     (swap! state assoc :nest-id "45356038")
     (with-redefs [call (constantly {:type :ant, :location [0 0], :got-food false,
                                     :team "iron-ant-tyson", :nest "45356038", :n 1,
                                     :id   "44003385", :surroundings {"n" [], "w" [], "s" [], "sw" [], "ne" [], "e" [], "nw" [], "se" []}})]
-      (let [result (spawn)]
+      (let [result (spawn false)]
         (should-not-be-nil (get-in @state [:ants "44003385"]))
         (should= "44003385" result))))
 
@@ -120,17 +120,31 @@
     (let [dir (ant-tick "44003385")]
       (should= "nw" dir)))
 
+  (it "hunters never stop hunting"
+    (swap! state assoc
+           :nest-id "45356038"
+           :ants {"44003385" {:id "44003385" :type :ant :hunter? true :location [0 0] :got-food false}}
+           :foods {"12345" {:id "12345" :type :food :location [-9 -9]}})
+    (with-redefs [random-location (constantly [4 4])]
+      (let [dir (ant-tick "44003385")]
+        (should= [4 4] (get-in @state [:ants "44003385" :food-guess]))
+        (should= "se" dir))))
+
   (it "goes home when has food"
     (swap! state assoc
-               :nest-id "45356038"
-               :ants {"44003385" {:got-food true :id "44003385" :type :ant :location [-4 3] :food-guess [6 6]}}
-               :foods {"12345" {:id "12345" :type :food :location [-9 -9]}})
+           :nest-id "45356038"
+           :ants {"44003385" {:got-food true :id "44003385" :type :ant :location [-4 3] :food-guess [6 6]}}
+           :foods {"12345" {:id "12345" :type :food :location [-9 -9]}})
     (let [dir (ant-tick "44003385")]
-          (should= "ne" dir)))
+      (should= "ne" dir)))
 
   (it "knows when to spawn"
-    (swap! state assoc :nest-id "45356038")
+    (swap! state assoc :nest {:id "45356038" :ants 0 :food 5})
     (should= true (spawn?))
-    (doseq [x (range 20)] (swap! state assoc-in [:ants (str (rand))] {:type :ant}))
+    (swap! state assoc :nest {:id "45356038" :ants 5 :food 0})
+    (should= false (spawn?))
+    (swap! state assoc :nest {:id "45356038" :ants 5 :food 20})
+    (should= true (spawn?))
+    (swap! state assoc :nest {:id "45356038" :ants 20 :food 30})
     (should= false (spawn?)))
   )
