@@ -82,11 +82,13 @@
 (defn spawn []
   (let [ant (call (format "/%s/spawn" (:nest-id @state)))]
     (swap! state assoc-in [:ants (:id ant)] ant)
+    (process-surroundings ant)
     (:id ant)))
 
 (defn go [ant-id direction]
   (let [ant (call (format "/%s/go/%s" ant-id direction))]
-    (swap! state assoc-in [:ants (:id ant)] ant)
+    (swap! state update-in [:ants (:id ant)] merge ant)
+    (process-surroundings ant)
     (:id ant)))
 
 (defn has-food-destination? [ant]
@@ -98,15 +100,24 @@
 (defn assign-and-goto-food-dest [ant]
   (let [food-guess (random-location)
         ant (assoc ant :food-guess food-guess)]
+    ;(prn "Looking for food at " food-guess ant)
     (swap! state assoc-in [:ants (:id ant)] ant)
-    (direction-to (:location ant) (:food-guess ant))))
+    (goto-food-destination ant)))
+
+(defn go-home [ant]
+  ;(prn "Going home" ant)
+  (direction-to (:location ant) [0 0]))
+
+(defn goto-food [ant food]
+  ;(prn "Going to food " food ant)
+  (direction-to (:location ant) (:location food)))
 
 (defn ant-tick [ant-id]
   (let [ant (get-in @state [:ants ant-id])]
     (if (:got-food ant)
-      (direction-to (:location ant) [0 0])
+      (go-home ant)
       (if-let [food (nearest-food (:location ant))]
-        (direction-to (:location ant) (:location food))
+        (goto-food ant food)
         (if (has-food-destination? ant)
           (goto-food-destination ant)
           (assign-and-goto-food-dest ant))))))
@@ -119,10 +130,13 @@
   (println "Iron Ant Tyson")
   (init "http://localhost:8888")
   (join)
+  (future (spawn))
+  (future (spawn))
+  (future (spawn))
+  (future (spawn))
+  (future (spawn))
   (while true
-    (let [workers (remove nil?
-                          (cons (when (spawn?) (future (spawn)))
-                                (map #(future
-                                        (let [dir (ant-tick %)]
-                                          (go % dir))) (keys (:ants @state)))))]
+    (let [workers (mapv #(future
+                          (let [dir (ant-tick %)]
+                            (go % dir))) (keys (:ants @state)))]
       (doseq [worker workers] (deref worker)))))
