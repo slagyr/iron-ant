@@ -9,10 +9,10 @@
 (defn call [path]
   (let [result (http/get (str (:host @state) path))]
     (when-not (= 200 (:status result))
-      (throw (ex-info path result)))
+      (prn "Failed request:" result))
     (let [data (edn/read-string (:body result))]
       (when-not (= "ok" (:response data))
-        (throw (ex-info "API error" data)))
+        (prn "Failed API call: " data))
       (:stat data))))
 
 (defn food? [thing] (= :food (:type thing)))
@@ -60,7 +60,7 @@
                            (reduce #(update-in %1 [:foods] dissoc (:id %2)) state known))))
                      state directions)))))
 
-(defn distance [[x1 y1][x2 y2]]
+(defn distance [[x1 y1] [x2 y2]]
   (let [a (Math/abs (- x1 x2))
         b (Math/abs (- y1 y2))]
     (Math/sqrt (+ (* a a) (* b b)))))
@@ -111,5 +111,18 @@
           (goto-food-destination ant)
           (assign-and-goto-food-dest ant))))))
 
+(defn spawn? []
+  (let [n (count (:ants @state))]
+    (< n 5)))
+
 (defn -main []
-  (println "Iron Ant Tyson"))
+  (println "Iron Ant Tyson")
+  (init "http://localhost:8888")
+  (join)
+  (while true
+    (let [workers (remove nil?
+                          (cons (when (spawn?) (future (spawn)))
+                                (map #(future
+                                        (let [dir (ant-tick %)]
+                                          (go % dir))) (keys (:ants @state)))))]
+      (doseq [worker workers] (deref worker)))))

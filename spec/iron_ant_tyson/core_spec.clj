@@ -128,4 +128,9 @@
     (let [dir (ant-tick "44003385")]
           (should= "ne" dir)))
 
+  (it "knows when to spawn"
+    (swap! state assoc :nest-id "45356038")
+    (should= true (spawn?))
+    (doseq [x (range 20)] (swap! state assoc-in [:ants (str (rand))] {:type :ant}))
+    (should= false (spawn?)))
   )
