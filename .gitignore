@@ -1,0 +1,9 @@
+lib
+out
+classes
+.idea
+target
+.lein-repl-history
+.nrepl-port
+.specljs-timestamp
+resources/public/cljs/
