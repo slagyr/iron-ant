@@ -135,7 +135,7 @@
 (defn spawn? []
   (let [nest (:nest @state)]
     (and (< 0 (:food nest))
-         (< (:ants nest) 20))))
+         (< (:ants nest) 50))))
 
 (defn spawn-ant-thread
   ([] (spawn-ant-thread false))
@@ -156,16 +156,12 @@
           (Thread/sleep 1000)
           (stat-nest)
           (when (spawn?)
-            (spawn-ant-thread)))))))
+            (let [hunter? (< (count (:ants @state)) 2)]
+              (spawn-ant-thread hunter?))))))))
 
 (defn -main [& args]
   (let [name (or (first args) "iron-ant-tyson")]
     (println "Iron Ant Tyson")
     (init "http://localhost:8888")
     (join name)
-    (spawn-ant-thread true)
-    (spawn-ant-thread true)
-    (spawn-ant-thread)
-    (spawn-ant-thread)
-    (spawn-ant-thread)
     (overwatch-thread)))

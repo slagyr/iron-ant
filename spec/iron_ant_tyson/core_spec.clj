@@ -145,6 +145,6 @@
     (should= false (spawn?))
     (swap! state assoc :nest {:id "45356038" :ants 5 :food 20})
     (should= true (spawn?))
-    (swap! state assoc :nest {:id "45356038" :ants 20 :food 30})
+    (swap! state assoc :nest {:id "45356038" :ants 50 :food 30})
     (should= false (spawn?)))
   )
