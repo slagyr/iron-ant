@@ -2,6 +2,8 @@
   (:require [clj-http.client :as http]
             [clojure.edn :as edn]))
 
+(def MAX_ANTS 100)
+
 (def state (atom {}))
 
 (defn init [host] (reset! state {:host host}))
@@ -105,16 +107,13 @@
 (defn assign-and-goto-food-dest [ant]
   (let [food-guess (random-location)
         ant (assoc ant :food-guess food-guess)]
-    ;(prn "Looking for food at " food-guess ant)
     (swap! state assoc-in [:ants (:id ant)] ant)
     (goto-food-destination ant)))
 
 (defn go-home [ant]
-  ;(prn "Going home" ant)
   (direction-to (:location ant) [0 0]))
 
 (defn goto-food [ant food]
-  ;(prn "Going to food " food ant)
   (direction-to (:location ant) (:location food)))
 
 (defn look-for-food [ant]
@@ -122,20 +121,23 @@
     (goto-food-destination ant)
     (assign-and-goto-food-dest ant)))
 
+(defn decide-what-to-do [ant]
+  (if (:got-food ant)
+    (go-home ant)
+    (if (:hunter? ant)
+      (look-for-food ant)
+      (if-let [food (nearest-food (:location ant))]
+        (goto-food ant food)
+        (look-for-food ant)))))
+
 (defn ant-tick [ant-id]
   (let [ant (get-in @state [:ants ant-id])]
-    (if (:got-food ant)
-      (go-home ant)
-      (if (:hunter? ant)
-        (look-for-food ant)
-        (if-let [food (nearest-food (:location ant))]
-          (goto-food ant food)
-          (look-for-food ant))))))
+    (decide-what-to-do ant)))
 
 (defn spawn? []
   (let [nest (:nest @state)]
     (and (< 0 (:food nest))
-         (< (:ants nest) 50))))
+         (< (:ants nest) MAX_ANTS))))
 
 (defn spawn-ant-thread
   ([] (spawn-ant-thread false))
@@ -143,21 +145,27 @@
    (.start
      (Thread.
        (fn []
-         (let [ant-id (spawn hunter?)]
-           (while true
-             (let [dir (ant-tick ant-id)]
-               (go ant-id dir)))))))))
+         (try
+           (let [ant-id (spawn hunter?)]
+             (while true
+               (let [dir (ant-tick ant-id)]
+                 (go ant-id dir))))
+           (catch Exception e
+             (.printStackTrace e))))))))
 
 (defn overwatch-thread []
   (.start
     (Thread.
       (fn []
-        (while true
-          (Thread/sleep 1000)
-          (stat-nest)
-          (when (spawn?)
-            (let [hunter? (< (count (:ants @state)) 2)]
-              (spawn-ant-thread hunter?))))))))
+        (try
+          (while true
+            (Thread/sleep 1000)
+            (stat-nest)
+            (when (spawn?)
+              (let [hunter? (< (count (:ants @state)) 2)]
+                (spawn-ant-thread hunter?))))
+          (catch Exception e
+            (.printStackTrace e)))))))
 
 (defn -main [& args]
   (let [name (or (first args) "iron-ant-tyson")]
